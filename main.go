@@ -5,13 +5,12 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/junegunn/fzf/src/algo"
-	"github.com/junegunn/fzf/src/util"
 )
 
 var (
@@ -114,21 +113,39 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) performSearch() tea.Msg {
-	items := m.commits.Items()
-	options := make([]string, len(items))
-	for i, item := range items {
-		options[i] = item.(commit).FilterValue()
+	query := strings.ToLower(m.searchInput.Value())
+	var filteredItems []list.Item
+
+	for _, item := range m.commits.Items() {
+		if fuzzyMatch(item.(commit).FilterValue(), query) {
+			filteredItems = append(filteredItems, item)
+		}
 	}
 
-	pattern := algo.ParsePattern(m.searchInput.Value(), true, algo.CaseSmartCase, true)
-	slab := util.MakeSlab(256)
-	matched := algo.FuzzyMatchV2(false, false, true, options, pattern, true, algo.FuncMap{}, &slab)
-
-	if len(matched) > 0 {
-		m.commits.Select(matched[0].Index)
+	m.commits.SetItems(filteredItems)
+	if len(filteredItems) > 0 {
+		m.commits.Select(0)
 	}
 	m.searchInput.SetValue("")
 	return nil
+}
+
+func fuzzyMatch(s, query string) bool {
+	s = strings.ToLower(s)
+	queryRunes := []rune(query)
+	queryIndex := 0
+
+	for _, r := range s {
+		if queryIndex >= len(queryRunes) {
+			return true
+		}
+		if r == queryRunes[queryIndex] ||
+			unicode.ToLower(r) == unicode.ToLower(queryRunes[queryIndex]) {
+			queryIndex++
+		}
+	}
+
+	return queryIndex >= len(queryRunes)
 }
 
 func (m model) View() string {
